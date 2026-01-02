@@ -35,43 +35,55 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                dir('terraform') {
-                sh 'terraform init'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']
+                ]) {
+                    dir('terraform') {
+                        sh 'terraform init'
+                    }
                 }
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                dir('terraform') {
-                    sh 'terraform plan -out=tfplan'
-                    sh 'terraform show -no-color tfplan > tfplan.txt'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']
+                ]) {
+                    dir('terraform') {
+                        sh 'terraform plan -out=tfplan'
+                        sh 'terraform show -no-color tfplan > tfplan.txt'
+                    }
                 }
             }
         }
 
         stage('Terraform Apply / Destroy') {
             steps {
-                script {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']
+                ]) {
                     dir('terraform') {
-                    if (params.action == 'apply') {
-                        if (!params.autoApprove) {
-                            def plan = readFile 'tfplan.txt'
-                            input(
-                                message: 'Do you want to apply the Terraform plan?',
-                                parameters: [
-                                    text(
-                                        name: 'PLAN',
-                                        defaultValue: plan,
-                                        description: 'Terraform execution plan'
+                        script {
+                            if (params.action == 'apply') {
+                                if (!params.autoApprove) {
+                                    def plan = readFile 'tfplan.txt'
+                                    input(
+                                        message: 'Do you want to apply the Terraform plan?',
+                                        parameters: [
+                                            text(
+                                                name: 'PLAN',
+                                                defaultValue: plan,
+                                                description: 'Terraform execution plan'
+                                            )
+                                        ]
                                     )
-                                ]
-                            )
+                                }
+                                sh 'terraform apply -input=false tfplan'
+                            } else {
+                                sh 'terraform destroy -auto-approve'
+                            }
                         }
-                        sh 'terraform apply -input=false tfplan'
-                    } else {
-                        sh 'terraform destroy -auto-approve'
-                    }
                     }
                 }
             }
@@ -79,9 +91,7 @@ pipeline {
 
         stage('Build Docker Images') {
             steps {
-                sh '''
-                docker compose -f docker-compose.yml build
-                '''
+                sh 'docker compose -f docker-compose.yml build'
             }
         }
 
@@ -92,7 +102,7 @@ pipeline {
                 ]) {
                     sh '''
                     aws ecr get-login-password --region ${AWS_REGION} \
-                        | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                     '''
                 }
             }
@@ -102,11 +112,11 @@ pipeline {
             steps {
                 sh '''
                 docker tag ${LOCAL_IMAGE_MUI_PRACTICE_BACKEND} \
-                ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
+                    ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
                 docker push ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
 
                 docker tag ${LOCAL_IMAGE_MUI_PRACTICE_FRONTEND} \
-                ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
+                    ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
                 docker push ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
                 '''
             }
@@ -139,10 +149,11 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo ' Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed. Check logs.'
+            echo ' Pipeline failed. Check logs.'
         }
     }
 }
+
