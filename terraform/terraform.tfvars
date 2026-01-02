@@ -1,0 +1,5 @@
+app_service_backend      = "mul-backend-service"
+app_service_frontend     = "mul-frontend-service"
+aws_ecr_repository       = "mui-practice-repo"
+aws_ecs_cluster          = "mui-practice-cluster"
+aws_ecs_task_definition  = "mui-practice-task"
