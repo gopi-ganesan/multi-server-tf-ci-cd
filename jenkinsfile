@@ -35,20 +35,25 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
+                dir('terraform') {
                 sh 'terraform init'
+                }
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                sh 'terraform plan -out=tfplan'
-                sh 'terraform show -no-color tfplan > tfplan.txt'
+                dir('terraform') {
+                    sh 'terraform plan -out=tfplan'
+                    sh 'terraform show -no-color tfplan > tfplan.txt'
+                }
             }
         }
 
         stage('Terraform Apply / Destroy') {
             steps {
                 script {
+                    dir('terraform') {
                     if (params.action == 'apply') {
                         if (!params.autoApprove) {
                             def plan = readFile 'tfplan.txt'
@@ -66,6 +71,7 @@ pipeline {
                         sh 'terraform apply -input=false tfplan'
                     } else {
                         sh 'terraform destroy -auto-approve'
+                    }
                     }
                 }
             }
