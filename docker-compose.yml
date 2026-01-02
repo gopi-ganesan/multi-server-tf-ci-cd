@@ -1,0 +1,14 @@
+version: '3.8'
+
+sevices:
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    container_name: backend_mul
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    container_name: frontend_mul

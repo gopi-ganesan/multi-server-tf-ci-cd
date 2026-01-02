@@ -1,0 +1,139 @@
+pipeline {
+    agent any
+
+    parameters {
+        booleanParam(name: 'autoApprove',defaultValue: false,description: 'Automatically approve Terraform apply step')
+        choice(name: 'action',choices: ['apply', 'destroy'],description: 'Select action to perform')
+    }
+
+    environment {
+        AWS_ACCOUNT_ID = "562404438689"
+        AWS_REGION     = "us-east-1"
+
+        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        IMAGE_TAG      = "latest"
+
+        LOCAL_IMAGE_MUI_PRACTICE_BACKEND = "mui-BACKEND:${IMAGE_TAG}"
+        LOCAL_IMAGE_MUI_PRACTICE_FRONTEND = "mui-FRONTEND:${IMAGE_TAG}"
+
+        MUI_PRACTICE_ECR_REPO = "mui-practice-repo"
+
+        ECS_CLUSTER_NAME = "mui-practice-cluster"
+        ECS_BACKEND_SERVICE   = "mul-backend-service"
+        ECS_FRONTEND_SERVICE  = "mui-frontend-service"
+    }
+
+    stages {
+
+        stage('Git Checkout') {
+            steps {
+                git(
+                    url: 'https://github.com/your-org/your-repo.git',
+                    branch: 'main',
+                    credentialsId: 'github-token'
+                )
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                echo 'Initializing Terraform...'
+                sh 'terraform init'
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                echo 'Running Terraform plan...'
+                sh 'terraform plan -out=tfplan'
+                sh 'terraform show -no-color tfplan > tfplan.txt'
+            }
+        }
+
+        stage('Terraform Apply / Destroy') {
+            steps {
+                script {
+                    if (params.action == 'apply') {
+                        if (!params.autoApprove) {
+                            def plan = readFile 'tfplan.txt'
+                            input message: 'Do you want to apply the Terraform plan?',
+                            parameters: [text(name: 'PLAN',defaultValue: plan,description: 'Terraform execution plan')]
+                        }
+                        sh 'terraform apply -input=false tfplan'
+                    } else if (params.action == 'destroy') {
+                        sh 'terraform destroy -auto-approve'
+                    } else {
+                        error 'Invalid action selected. Choose apply or destroy.'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+                sh """
+                docker compose -f docker-compose.yml build 
+                """
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                echo 'Logging in to AWS ECR...'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']
+                ]) {
+                    sh """
+                    aws ecr get-login-password --region ${AWS_REGION} \
+                    | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    """
+                }
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            steps {
+                echo 'Pushing Docker image to ECR...'
+                sh """
+                docker tag ${LOCAL_IMAGE_MUI_PRACTICE_BACKEND} ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
+                docker push ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
+
+                docker tag ${LOCAL_IMAGE_MUI_PRACTICE_FRONTEND} ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
+                docker push ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
+                """
+            }
+        }
+
+        stage('Deploy to ECS') {
+            steps {
+                echo 'Deploying to ECS...'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']
+                ]) {
+                    sh """
+                    aws ecs update-service \       
+                        --cluster ${ECS_CLUSTER_NAME} \
+                        --service ${ECS_BACKEND_SERVICE} \
+                        --force-new-deployment \
+                        --region ${AWS_REGION}
+
+                        --cluster ${ECS_CLUSTER_NAME} \
+                        --service ${ECS_FRONTEND_SERVICE} \
+                        --force-new-deployment \
+                        --region ${AWS_REGION}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs.'
+        }
+    }
+}
