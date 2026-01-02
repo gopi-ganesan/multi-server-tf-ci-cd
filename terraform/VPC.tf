@@ -1,11 +1,11 @@
-data "aws_vpc" "default" {
+data "aws_vpc" "main" {
   default = true
 }
 
 data "aws_subnets" "default" {
     filter {
     name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+    values = [data.aws_vpc.main.id]
   }
 }
 
@@ -13,7 +13,7 @@ data "aws_subnets" "default" {
 resource "aws_security_group" "frontend_sg" {
   name        = "frontend-sg"
   description = "Allow HTTP traffic to frontend"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = data.aws_vpc.main.id
 
   ingress {
     from_port   = 80
@@ -33,7 +33,7 @@ resource "aws_security_group" "frontend_sg" {
 resource "aws_security_group" "backend_sg" {
   name        = "backend-sg"
   description = "Allow backend access only from frontend"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = data.aws_vpc.main.id
 
   ingress {
     from_port       = 5000

@@ -40,7 +40,7 @@ resource "aws_ecs_task_definition" "frontend_task" {
 
 
 resource "aws_ecs_task_definition" "backend_task" {
-  family                   = "frontend-task"
+  family                   = "backend-task"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = "256"
@@ -74,8 +74,8 @@ resource "aws_ecs_service" "mul-backend-service-app" {
 
   network_configuration {
     subnets         = data.aws_subnets.default.ids
-    security_groups = [aws_security_group.ecs_sg.id]
-    assign_public_ip = true
+    security_groups = [aws_security_group.backend_sg.id]
+    assign_public_ip = false
   }
 }
 
@@ -89,12 +89,12 @@ resource "aws_ecs_service" "mui-frontend-service-app" {
 
   network_configuration {
     subnets         = data.aws_subnets.default.ids
-    security_groups = [aws_security_group.ecs_sg.id]
+    security_groups = [aws_security_group.frontend_sg.id]
     assign_public_ip = true
   }
 }
 
-# THE IAM ROLE FOR ECS TAS  K EXECUTION
+# THE IAM ROLE FOR ECS TASK EXECUTION
 
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
