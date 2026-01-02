@@ -13,14 +13,12 @@ pipeline {
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         IMAGE_TAG      = "latest"
 
-        LOCAL_IMAGE_MUI_PRACTICE_BACKEND = "mui-BACKEND:${IMAGE_TAG}"
+        LOCAL_IMAGE_MUI_PRACTICE_BACKEND  = "mui-BACKEND:${IMAGE_TAG}"
         LOCAL_IMAGE_MUI_PRACTICE_FRONTEND = "mui-FRONTEND:${IMAGE_TAG}"
 
-        MUI_PRACTICE_ECR_REPO = "mui-practice-repo"
-
-        ECS_CLUSTER_NAME = "mui-practice-cluster"
-        ECS_BACKEND_SERVICE   = "mul-backend-service"
-        ECS_FRONTEND_SERVICE  = "mui-frontend-service"
+        ECS_CLUSTER_NAME     = "mui-practice-cluster"
+        ECS_BACKEND_SERVICE  = "mul-backend-service"
+        ECS_FRONTEND_SERVICE = "mui-frontend-service"
     }
 
     stages {
@@ -37,14 +35,12 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                echo 'Initializing Terraform...'
                 sh 'terraform init'
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                echo 'Running Terraform plan...'
                 sh 'terraform plan -out=tfplan'
                 sh 'terraform show -no-color tfplan > tfplan.txt'
             }
@@ -56,73 +52,80 @@ pipeline {
                     if (params.action == 'apply') {
                         if (!params.autoApprove) {
                             def plan = readFile 'tfplan.txt'
-                            input message: 'Do you want to apply the Terraform plan?',
-                            parameters: [text(name: 'PLAN',defaultValue: plan,description: 'Terraform execution plan')]
+                            input(
+                                message: 'Do you want to apply the Terraform plan?',
+                                parameters: [
+                                    text(
+                                        name: 'PLAN',
+                                        defaultValue: plan,
+                                        description: 'Terraform execution plan'
+                                    )
+                                ]
+                            )
                         }
                         sh 'terraform apply -input=false tfplan'
-                    } else if (params.action == 'destroy') {
-                        sh 'terraform destroy -auto-approve'
                     } else {
-                        error 'Invalid action selected. Choose apply or destroy.'
+                        sh 'terraform destroy -auto-approve'
                     }
                 }
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Images') {
             steps {
-                echo 'Building Docker image...'
-                sh """
-                docker compose -f docker-compose.yml build 
-                """
+                sh '''
+                docker compose -f docker-compose.yml build
+                '''
             }
         }
 
         stage('Login to AWS ECR') {
             steps {
-                echo 'Logging in to AWS ECR...'
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']
                 ]) {
-                    sh """
+                    sh '''
                     aws ecr get-login-password --region ${AWS_REGION} \
-                    | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                    """
+                        | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    '''
                 }
             }
         }
 
-        stage('Push Docker Image to ECR') {
+        stage('Push Docker Images to ECR') {
             steps {
-                echo 'Pushing Docker image to ECR...'
-                sh """
-                docker tag ${LOCAL_IMAGE_MUI_PRACTICE_BACKEND} ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
+                sh '''
+                docker tag ${LOCAL_IMAGE_MUI_PRACTICE_BACKEND} \
+                ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
                 docker push ${ECR_REGISTRY}/${ECS_BACKEND_SERVICE}:${IMAGE_TAG}
 
-                docker tag ${LOCAL_IMAGE_MUI_PRACTICE_FRONTEND} ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
+                docker tag ${LOCAL_IMAGE_MUI_PRACTICE_FRONTEND} \
+                ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
                 docker push ${ECR_REGISTRY}/${ECS_FRONTEND_SERVICE}:${IMAGE_TAG}
-                """
+                '''
             }
         }
 
         stage('Deploy to ECS') {
             steps {
-                echo 'Deploying to ECS...'
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']
                 ]) {
-                    sh """
-                    aws ecs update-service \       
+                    sh '''
+                    echo "Deploying Backend Service..."
+                    aws ecs update-service \
                         --cluster ${ECS_CLUSTER_NAME} \
                         --service ${ECS_BACKEND_SERVICE} \
                         --force-new-deployment \
                         --region ${AWS_REGION}
 
+                    echo "Deploying Frontend Service..."
+                    aws ecs update-service \
                         --cluster ${ECS_CLUSTER_NAME} \
                         --service ${ECS_FRONTEND_SERVICE} \
                         --force-new-deployment \
                         --region ${AWS_REGION}
-                    """
+                    '''
                 }
             }
         }
