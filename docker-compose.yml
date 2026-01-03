@@ -1,14 +1,16 @@
-version: '3.8'
+version: "3.8"
 
-sevices:
-  backend:
-    build: ./backend
-    ports:
-      - "5000:5000"
-    container_name: backend_mul
-
+services:
   frontend:
     build: ./frontend
+    image: mui-frontend:latest
     ports:
-      - "3000:80"
-    container_name: frontend_mul
+      - "80:80"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    image: mui-backend:latest
+    ports:
+      - "3000:3000"
